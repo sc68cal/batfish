@@ -40,7 +40,7 @@ public final class SecurityRule implements Serializable {
   @Nonnull private final SortedSet<ServiceOrServiceGroupReference> _service;
 
   // Applications
-  @Nonnull private final SortedSet<String> _applications;
+  @Nonnull private final SortedSet<ApplicationOrApplicationGroupReference> _applications;
 
   public SecurityRule(String name, Vsys vsys) {
     _action = LineAction.DENY;
@@ -68,7 +68,7 @@ public final class SecurityRule implements Serializable {
   }
 
   @Nonnull
-  public SortedSet<String> getApplications() {
+  public SortedSet<ApplicationOrApplicationGroupReference> getApplications() {
     return _applications;
   }
 

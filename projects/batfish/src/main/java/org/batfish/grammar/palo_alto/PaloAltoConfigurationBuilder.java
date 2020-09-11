@@ -349,6 +349,7 @@ import org.batfish.representation.palo_alto.AddressPrefix;
 import org.batfish.representation.palo_alto.Application;
 import org.batfish.representation.palo_alto.ApplicationBuiltIn;
 import org.batfish.representation.palo_alto.ApplicationGroup;
+import org.batfish.representation.palo_alto.ApplicationOrApplicationGroupReference;
 import org.batfish.representation.palo_alto.BgpPeer;
 import org.batfish.representation.palo_alto.BgpPeer.ReflectorClient;
 import org.batfish.representation.palo_alto.BgpPeerGroup;
@@ -1489,7 +1490,9 @@ public class PaloAltoConfigurationBuilder extends PaloAltoParserBaseListener {
   public void exitSappg_members(Sappg_membersContext ctx) {
     for (Variable_list_itemContext var : variables(ctx.variable_list())) {
       String name = getText(var);
-      _currentApplicationGroup.getMembers().add(name);
+      _currentApplicationGroup
+          .getReferences()
+          .add(new ApplicationOrApplicationGroupReference(name));
       String uniqueName = computeObjectName(_currentVsys, name);
       referenceApplicationLike(name, uniqueName, APPLICATION_GROUP_MEMBERS, var);
     }
@@ -2491,7 +2494,7 @@ public class PaloAltoConfigurationBuilder extends PaloAltoParserBaseListener {
   public void exitSrs_application(Srs_applicationContext ctx) {
     for (Variable_list_itemContext var : variables(ctx.variable_list())) {
       String name = getText(var);
-      _currentSecurityRule.getApplications().add(name);
+      _currentSecurityRule.getApplications().add(new ApplicationOrApplicationGroupReference(name));
       // Use constructed object name so same-named refs across vsys are unique
       String uniqueName = computeObjectName(_currentVsys, name);
       referenceApplicationLike(name, uniqueName, SECURITY_RULE_APPLICATION, var);

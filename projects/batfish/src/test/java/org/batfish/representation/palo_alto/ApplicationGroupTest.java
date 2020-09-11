@@ -1,7 +1,7 @@
 package org.batfish.representation.palo_alto;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
-import static org.junit.Assert.assertThat;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -19,7 +19,7 @@ public class ApplicationGroupTest {
             "a1", Application.builder("a1").build(), "a2", Application.builder("a2").build());
 
     // only one of the address objects is a member
-    ag.getMembers().add("a1");
+    ag.getReferences().add(new ApplicationOrApplicationGroupReference("a1"));
     assertThat(
         ag.getDescendantObjects(applications, ImmutableMap.of(), new HashSet<>()),
         equalTo(ImmutableSet.of("a1")));
@@ -28,7 +28,8 @@ public class ApplicationGroupTest {
   @Test
   public void testGetDescendantObjectsBuiltIn() {
     ApplicationGroup ag = new ApplicationGroup("group");
-    ag.getMembers().add(ApplicationBuiltIn.FTP.getName());
+    ag.getReferences()
+        .add(new ApplicationOrApplicationGroupReference(ApplicationBuiltIn.FTP.getName()));
 
     assertThat(
         ag.getDescendantObjects(ImmutableMap.of(), ImmutableMap.of(), new HashSet<>()),
@@ -51,12 +52,21 @@ public class ApplicationGroupTest {
 
     // parent -> child -> {parent, grandChild}
     // grandChild -> {child, ad1}
-    applicationGroups.get("parentGroup").getMembers().add("childGroup");
-    applicationGroups.get("childGroup").getMembers().add("grandchildGroup");
+    applicationGroups
+        .get("parentGroup")
+        .getReferences()
+        .add(new ApplicationOrApplicationGroupReference("childGroup"));
+    applicationGroups
+        .get("childGroup")
+        .getReferences()
+        .add(new ApplicationOrApplicationGroupReference("grandchildGroup"));
     applicationGroups
         .get("grandchildGroup")
-        .getMembers()
-        .addAll(ImmutableSet.of("childGroup", "a1"));
+        .getReferences()
+        .addAll(
+            ImmutableSet.of(
+                new ApplicationOrApplicationGroupReference("childGroup"),
+                new ApplicationOrApplicationGroupReference("a1")));
 
     assertThat(
         applicationGroups
@@ -85,8 +95,14 @@ public class ApplicationGroupTest {
         ImmutableMap.of(
             "a1", Application.builder("a1").build(), "a2", Application.builder("a2").build());
 
-    applicationGroups.get("parentGroup").getMembers().add("childGroup");
-    applicationGroups.get("childGroup").getMembers().add("a1");
+    applicationGroups
+        .get("parentGroup")
+        .getReferences()
+        .add(new ApplicationOrApplicationGroupReference("childGroup"));
+    applicationGroups
+        .get("childGroup")
+        .getReferences()
+        .add(new ApplicationOrApplicationGroupReference("a1"));
 
     assertThat(
         applicationGroups

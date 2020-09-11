@@ -57,13 +57,11 @@ import java.util.Map.Entry;
 import java.util.NavigableSet;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Queue;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -107,6 +105,7 @@ import org.batfish.datamodel.acl.AndMatchExpr;
 import org.batfish.datamodel.acl.MatchHeaderSpace;
 import org.batfish.datamodel.acl.NotMatchExpr;
 import org.batfish.datamodel.acl.OrMatchExpr;
+import org.batfish.datamodel.acl.PermittedByAcl;
 import org.batfish.datamodel.acl.TrueExpr;
 import org.batfish.datamodel.bgp.AddressFamilyCapabilities;
 import org.batfish.datamodel.bgp.Ipv4UnicastAddressFamily;
@@ -424,6 +423,18 @@ public class PaloAltoConfiguration extends VendorConfiguration {
   }
 
   /**
+   * Generate the {@link IpAccessList} name for the specified {@code applicationGroupMemberName} in
+   * the specified {@code vsysName}.
+   *
+   * <p>Note that this is <strong>not</strong> a generated name, just a namespaced name.
+   */
+  @VisibleForTesting
+  public static String computeApplicationGroupMemberAclName(
+      String vsysName, String applicationGroupMemberName) {
+    return String.format("%s~%s~APPLICATION_GROUP_MEMBER", applicationGroupMemberName, vsysName);
+  }
+
+  /**
    * Generate the {@link IpAccessList} name for the specified {@code serviceGroupMemberName} in the
    * specified {@code vsysName}.
    *
@@ -566,8 +577,77 @@ public class PaloAltoConfiguration extends VendorConfiguration {
                     serviceGroup.toIpAccessList(LineAction.PERMIT, this, namespace, _w);
                 _c.getIpAccessLists().put(acl.getName(), acl);
               }
+
+              // Convert applications
+              for (Application app : namespace.getApplications().values()) {
+                IpAccessList acl = toIpAccessList(app, LineAction.PERMIT, namespace);
+                _c.getIpAccessLists().put(acl.getName(), acl);
+              }
+
+              // Convert application groups
+              for (ApplicationGroup group : namespace.getApplicationGroups().values()) {
+                IpAccessList acl = toIpAccessList(group, LineAction.PERMIT, namespace);
+                _c.getIpAccessLists().put(acl.getName(), acl);
+              }
             });
     _c.setLoggingServers(loggingServers.build());
+  }
+
+  /** Convert an application into AclLineMatchExprs */
+  private List<AclLineMatchExpr> toAclLineMatchExprs(Application app) {
+    return app.getServices().stream()
+        .map(s -> s.toMatchHeaderSpace(_w))
+        .collect(ImmutableList.toImmutableList());
+  }
+
+  /** Convert an application into an IpAccessList */
+  private IpAccessList toIpAccessList(Application app, LineAction action, Vsys vsys) {
+    IpAccessList.Builder retAcl =
+        IpAccessList.builder()
+            .setName(computeApplicationGroupMemberAclName(vsys.getName(), app.getName()))
+            .setSourceName(app.getName())
+            .setSourceType(PaloAltoStructureType.APPLICATION.getDescription());
+    return retAcl
+        .setLines(new ExprAclLine(action, new OrMatchExpr(toAclLineMatchExprs(app)), app.getName()))
+        .build();
+  }
+
+  /** Convert an application group into an IpAccessList */
+  private IpAccessList toIpAccessList(ApplicationGroup group, LineAction action, Vsys vsys) {
+    List<AclLineMatchExpr> exprLines = new LinkedList<>();
+
+    for (ApplicationOrApplicationGroupReference reference : group.getReferences()) {
+      // Check for matching object before using built-ins
+      String vsysName = reference.getVsysName(this, vsys);
+      String applicationName = reference.getName();
+
+      if (vsysName != null) {
+        // Object reference
+        exprLines.add(
+            new PermittedByAcl(
+                computeApplicationGroupMemberAclName(vsysName, reference.getName())));
+      } else if (applicationName.equals(CATCHALL_APPLICATION_NAME)) {
+        // Any application
+        exprLines.clear();
+        exprLines.add(TrueExpr.INSTANCE);
+        break;
+      } else if (ApplicationBuiltIn.getBuiltInApplication(applicationName).isPresent()) {
+        // Built-in application
+        Application builtin = ApplicationBuiltIn.getBuiltInApplication(applicationName).get();
+        exprLines.addAll(toAclLineMatchExprs(builtin));
+      }
+    }
+    return IpAccessList.builder()
+        .setName(computeApplicationGroupMemberAclName(vsys.getName(), group.getName()))
+        .setLines(
+            ExprAclLine.builder()
+                .setAction(action)
+                .setMatchCondition(new OrMatchExpr(exprLines))
+                .setName(group.getName())
+                .build())
+        .setSourceName(group.getName())
+        .setSourceType(PaloAltoStructureType.SERVICE_GROUP.getDescription())
+        .build();
   }
 
   /** Generates a cross-zone ACL from the two given zones in the same Vsys using the given rules. */
@@ -1072,37 +1152,29 @@ public class PaloAltoConfiguration extends VendorConfiguration {
 
   private List<AclLineMatchExpr> matchServicesForApplications(SecurityRule rule, Vsys vsys) {
     ImmutableList.Builder<AclLineMatchExpr> ret = ImmutableList.builder();
-    Queue<String> applications = new LinkedBlockingQueue<>(rule.getApplications());
-    while (!applications.isEmpty()) {
-      String name = applications.remove();
 
-      // Assume all traffic matches some application under the "any" definition
-      if (name.equals(CATCHALL_APPLICATION_NAME)) {
+    SortedSet<ApplicationOrApplicationGroupReference> apps = rule.getApplications();
+    for (ApplicationOrApplicationGroupReference app : apps) {
+      String appName = app.getName();
+      // Resolve where this reference lives (if anywhere)
+      String vsysName = app.getVsysName(this, vsys);
+
+      if (vsysName != null) {
+        // Object reference
+        ret.add(permittedByAcl(computeApplicationGroupMemberAclName(vsysName, appName)));
+      } else if (appName.equals(CATCHALL_APPLICATION_NAME)) {
+        // Any application is allowed
         return ImmutableList.of(TrueExpr.INSTANCE);
+      } else if (ApplicationBuiltIn.getBuiltInApplication(appName).isPresent()) {
+        // Built-in application
+        ret.addAll(toAclLineMatchExprs(ApplicationBuiltIn.getBuiltInApplication(appName).get()));
+      } else {
+        // Did not find in the right hierarchy, so stop and warn.
+        _w.redFlag(
+            String.format(
+                "Unable to identify application %s in vsys %s rule %s",
+                appName, vsys.getName(), rule.getName()));
       }
-      ApplicationGroup group = vsys.getApplicationGroups().get(name);
-      if (group != null) {
-        applications.addAll(
-            group.getDescendantObjects(vsys.getApplications(), vsys.getApplicationGroups()));
-        continue;
-      }
-      Application a = vsys.getApplications().get(name);
-      if (a != null) {
-        for (Service s : a.getServices()) {
-          ret.add(s.toMatchHeaderSpace(_w));
-        }
-        continue;
-      }
-      Optional<Application> builtIn = ApplicationBuiltIn.getBuiltInApplication(name);
-      if (builtIn.isPresent()) {
-        builtIn.get().getServices().forEach(s -> ret.add(s.toMatchHeaderSpace(_w)));
-        continue;
-      }
-      // Did not find in the right hierarchy, so stop and warn.
-      _w.redFlag(
-          String.format(
-              "Unable to identify application %s in vsys %s rule %s",
-              name, vsys.getName(), rule.getName()));
     }
     return ret.build();
   }

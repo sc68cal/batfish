@@ -193,6 +193,7 @@ import org.batfish.representation.palo_alto.AddressObject;
 import org.batfish.representation.palo_alto.AddressPrefix;
 import org.batfish.representation.palo_alto.AdminDistances;
 import org.batfish.representation.palo_alto.Application;
+import org.batfish.representation.palo_alto.ApplicationOrApplicationGroupReference;
 import org.batfish.representation.palo_alto.BgpConnectionOptions;
 import org.batfish.representation.palo_alto.BgpPeer;
 import org.batfish.representation.palo_alto.BgpPeer.ReflectorClient;
@@ -2971,15 +2972,17 @@ public final class PaloAltoGrammarTest {
     String hostname = "application-group";
     PaloAltoConfiguration c = parsePaloAltoConfig(hostname);
     assertThat(
-        c.getVirtualSystems().get(DEFAULT_VSYS_NAME).getApplicationGroups().get("foo").getMembers(),
+        c.getVirtualSystems().get(DEFAULT_VSYS_NAME).getApplicationGroups().get("foo")
+            .getReferences().stream()
+            .map(ApplicationOrApplicationGroupReference::getName)
+            .collect(Collectors.toSet()),
         containsInAnyOrder("dns", "app1"));
 
     assertThat(
-        c.getVirtualSystems()
-            .get(DEFAULT_VSYS_NAME)
-            .getApplicationGroups()
-            .get("foo w spaces")
-            .getMembers(),
+        c.getVirtualSystems().get(DEFAULT_VSYS_NAME).getApplicationGroups().get("foo w spaces")
+            .getReferences().stream()
+            .map(ApplicationOrApplicationGroupReference::getName)
+            .collect(Collectors.toSet()),
         containsInAnyOrder("dns", "app w spaces"));
   }
 

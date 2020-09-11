@@ -418,7 +418,7 @@ public final class ApplicationBuiltIn {
           WEBEX,
           WEBSOCKET);
 
-  private static final Map<String, Application> BUILTINS =
+  public static final Map<String, Application> BUILTINS =
       BUILTIN_LIST.stream()
           .collect(ImmutableMap.toImmutableMap(Application::getName, Function.identity()));
 

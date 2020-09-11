@@ -11,13 +11,13 @@ import java.util.TreeSet;
 /** Represents a Palo Alto application-group */
 public final class ApplicationGroup implements Serializable {
 
-  private final Set<String> _members;
+  private final Set<ApplicationOrApplicationGroupReference> _references;
 
   private final String _name;
 
   public ApplicationGroup(String name) {
     _name = name;
-    _members = new TreeSet<>();
+    _references = new TreeSet<>();
   }
 
   @VisibleForTesting
@@ -30,16 +30,18 @@ public final class ApplicationGroup implements Serializable {
     }
     alreadyTraversedGroups.add(_name);
     Set<String> descendantObjects = new HashSet<>();
-    for (String member : _members) {
-      if (applications.containsKey(member)) {
-        descendantObjects.add(member);
-      } else if (applicationGroups.containsKey(member)) {
+    for (ApplicationOrApplicationGroupReference reference : _references) {
+      String referenceName = reference.getName();
+
+      if (applications.containsKey(referenceName)) {
+        descendantObjects.add(referenceName);
+      } else if (applicationGroups.containsKey(referenceName)) {
         descendantObjects.addAll(
             applicationGroups
-                .get(member)
+                .get(referenceName)
                 .getDescendantObjects(applications, applicationGroups, alreadyTraversedGroups));
-      } else if (ApplicationBuiltIn.getBuiltInApplication(member).isPresent()) {
-        descendantObjects.add(member);
+      } else if (ApplicationBuiltIn.getBuiltInApplication(referenceName).isPresent()) {
+        descendantObjects.add(referenceName);
       }
     }
     return descendantObjects;
@@ -54,8 +56,8 @@ public final class ApplicationGroup implements Serializable {
     return getDescendantObjects(applications, applicationGroups, new HashSet<>());
   }
 
-  public Set<String> getMembers() {
-    return _members;
+  public Set<ApplicationOrApplicationGroupReference> getReferences() {
+    return _references;
   }
 
   public String getName() {
