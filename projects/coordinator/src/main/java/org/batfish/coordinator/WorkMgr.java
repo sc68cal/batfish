@@ -86,6 +86,7 @@ import org.batfish.common.NetworkSnapshot;
 import org.batfish.common.Task;
 import org.batfish.common.WorkItem;
 import org.batfish.common.plugin.AbstractCoordinator;
+import org.batfish.common.plugin.IBatfish;
 import org.batfish.common.runtime.SnapshotRuntimeData;
 import org.batfish.common.util.BatfishObjectMapper;
 import org.batfish.common.util.CollectionUtil;
@@ -608,6 +609,7 @@ public class WorkMgr extends AbstractCoordinator {
       }
     }
 
+    IBatfish.SNAPSHOT.set(workItem.getSnapshot());
     // TODO: grab IDs once, and earlier; validate resolvable names
     NetworkId networkId = _idManager.getNetworkId(workItem.getNetwork()).get();
     WorkDetails.Builder builder =

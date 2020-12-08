@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -47,6 +48,8 @@ import org.batfish.specifier.SpecifierContext;
 import org.batfish.vendor.VendorConfiguration;
 
 public interface IBatfish extends IPluginConsumer {
+
+  @Nonnull AtomicReference<String> SNAPSHOT = new AtomicReference<>();
 
   DifferentialReachabilityResult bddDifferentialReachability(
       NetworkSnapshot snapshot,
