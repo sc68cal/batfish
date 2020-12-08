@@ -5,6 +5,7 @@ import static com.google.common.collect.ImmutableTable.toImmutableTable;
 import static org.batfish.common.util.CollectionUtil.toImmutableMap;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableTable;
 import com.google.common.collect.Streams;
@@ -13,17 +14,24 @@ import com.google.common.collect.Tables;
 import io.opentracing.Scope;
 import io.opentracing.Span;
 import io.opentracing.util.GlobalTracer;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.stream.Stream;
 import net.sf.javabdd.BDD;
+import net.sf.javabdd.BDDFactory;
 import org.batfish.bddreachability.transition.Transition;
 import org.batfish.bddreachability.transition.Transitions;
 import org.batfish.common.BatfishException;
 import org.batfish.common.bdd.BDDIpProtocol;
+import org.batfish.common.bdd.BDDOps;
 import org.batfish.common.bdd.BDDPacket;
 import org.batfish.datamodel.Flow;
 import org.batfish.datamodel.Flow.Builder;
@@ -58,6 +66,11 @@ public final class BDDReachabilityUtils {
       Table<StateExpr, StateExpr, Transition> edges,
       BiFunction<Transition, BDD, BDD> traverse) {
     Span span = GlobalTracer.get().buildSpan("BDDReachabilityAnalysis.fixpoint").start();
+
+    BDDFactory bddFactory = reachableSets.values().stream().findAny().get().getFactory();
+    BDD zero = bddFactory.zero();
+    BDDOps bddOps = new BDDOps(bddFactory);
+
     try (Scope scope = GlobalTracer.get().scopeManager().activate(span)) {
       assert scope != null; // avoid unused warning
       Set<StateExpr> dirtyStates = ImmutableSet.copyOf(reachableSets.keySet());
@@ -65,31 +78,78 @@ public final class BDDReachabilityUtils {
       while (!dirtyStates.isEmpty()) {
         Set<StateExpr> newDirtyStates = new HashSet<>();
 
+        Map<StateExpr, List<BDD>> targetToIncomingBdds = new HashMap<>();
         dirtyStates.forEach(
-            dirtyState -> {
-              Map<StateExpr, Transition> dirtyStateEdges = edges.row(dirtyState);
-              if (dirtyStateEdges == null) {
-                // dirtyState has no edges
-                return;
-              }
-
-              BDD dirtyStateBDD = reachableSets.get(dirtyState);
-              dirtyStateEdges.forEach(
-                  (neighbor, edge) -> {
-                    BDD result = traverse.apply(edge, dirtyStateBDD);
-                    if (result.isZero()) {
-                      return;
-                    }
-
-                    // update neighbor's reachable set
-                    BDD oldReach = reachableSets.get(neighbor);
-                    BDD newReach = oldReach == null ? result : oldReach.or(result);
-                    if (oldReach == null || !oldReach.equals(newReach)) {
-                      reachableSets.put(neighbor, newReach);
-                      newDirtyStates.add(neighbor);
-                    }
-                  });
+            source -> {
+              BDD sourceBdd = reachableSets.get(source);
+              edges
+                  .rowMap()
+                  .getOrDefault(source, ImmutableMap.of())
+                  .forEach(
+                      (target, edge) -> {
+                        BDD incomingBdd = traverse.apply(edge, sourceBdd);
+                        if (!incomingBdd.isZero()) {
+                          targetToIncomingBdds
+                              .computeIfAbsent(target, (k) -> new ArrayList<>())
+                              .add(incomingBdd);
+                        }
+                      });
             });
+
+        System.out.println("\norAll stats:");
+        Map<Integer, AtomicInteger> numTargetsPerDisjunctLength = new TreeMap<>();
+        targetToIncomingBdds
+            .values()
+            .forEach(
+                disjuncts ->
+                    numTargetsPerDisjunctLength
+                        .computeIfAbsent(disjuncts.size(), (k) -> new AtomicInteger())
+                        .incrementAndGet());
+        numTargetsPerDisjunctLength.forEach(
+            (disjunctLength, numTargets) -> {
+              System.out.println(
+                  String.format(
+                      "Targets with %d incoming BDDs: %d", disjunctLength, numTargets.get()));
+            });
+
+        targetToIncomingBdds.forEach(
+            (target, incomingBdds) -> {
+              BDD oldTargetReachableBdd = reachableSets.getOrDefault(target, zero);
+              if (!oldTargetReachableBdd.isZero()) {
+                incomingBdds.add(oldTargetReachableBdd);
+              }
+              BDD newTargetReachableBdd = bddOps.orAll(incomingBdds);
+              if (!oldTargetReachableBdd.equals(newTargetReachableBdd)) {
+                reachableSets.put(target, newTargetReachableBdd);
+                newDirtyStates.add(target);
+              }
+            });
+
+        //        dirtyStates.forEach(
+        //            dirtyState -> {
+        //              Map<StateExpr, Transition> dirtyStateEdges = edges.row(dirtyState);
+        //              if (dirtyStateEdges == null) {
+        //                // dirtyState has no edges
+        //                return;
+        //              }
+        //
+        //              BDD dirtyStateBDD = reachableSets.get(dirtyState);
+        //              dirtyStateEdges.forEach(
+        //                  (neighbor, edge) -> {
+        //                    BDD result = traverse.apply(edge, dirtyStateBDD);
+        //                    if (result.isZero()) {
+        //                      return;
+        //                    }
+        //
+        //                    // update neighbor's reachable set
+        //                    BDD oldReach = reachableSets.get(neighbor);
+        //                    BDD newReach = oldReach == null ? result : oldReach.or(result);
+        //                    if (oldReach == null || !oldReach.equals(newReach)) {
+        //                      reachableSets.put(neighbor, newReach);
+        //                      newDirtyStates.add(neighbor);
+        //                    }
+        //                  });
+        //            });
 
         dirtyStates = newDirtyStates;
       }
