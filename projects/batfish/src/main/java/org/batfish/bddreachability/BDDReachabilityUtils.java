@@ -28,6 +28,7 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 import net.sf.javabdd.BDD;
 import net.sf.javabdd.BDDFactory;
+import net.sf.javabdd.JFactory;
 import org.batfish.bddreachability.transition.Transition;
 import org.batfish.bddreachability.transition.Transitions;
 import org.batfish.common.BatfishException;
@@ -69,6 +70,7 @@ public final class BDDReachabilityUtils {
     Span span = GlobalTracer.get().buildSpan("BDDReachabilityAnalysis.fixpoint").start();
 
     BDDFactory bddFactory = reachableSets.values().stream().findAny().get().getFactory();
+    ((JFactory) bddFactory).resetCacheStats();
     BDD zero = bddFactory.zero();
     BDDOps bddOps = new BDDOps(bddFactory);
 
@@ -205,6 +207,7 @@ public final class BDDReachabilityUtils {
     //    } finally {
     //      span.finish();
     //    }
+    System.out.println(((JFactory) bddFactory).getCacheStats());
   }
 
   @VisibleForTesting

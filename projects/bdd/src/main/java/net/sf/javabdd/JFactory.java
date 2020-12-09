@@ -49,7 +49,7 @@ import org.apache.logging.log4j.Logger;
 public final class JFactory extends BDDFactory {
   private static final Logger LOGGER = LogManager.getLogger(JFactory.class);
   /** Whether to maintain (and in some cases print) statistics about the cache use. */
-  private static final boolean CACHESTATS = false;
+  private static final boolean CACHESTATS = true;
 
   /**
    * Whether to flush (clear completely) the cache when live BDD nodes are garbage collected. If
@@ -1624,16 +1624,16 @@ public final class JFactory extends BDDFactory {
     Arrays.sort(operands);
     operands = dedupSorted(operands);
 
-    MultiOpBddCacheData entry =
-        BddCache_lookupMultiOp(multiopcache, MULTIOPHASH(operands, bddop_or));
+    int hash = MULTIOPHASH(operands, bddop_or);
+    MultiOpBddCacheData entry = BddCache_lookupMultiOp(multiopcache, hash);
     if (entry.a == bddop_or && Arrays.equals(operands, entry.operands)) {
       if (CACHESTATS) {
-        cachestats.opHit++;
+        cachestats.multiOpHit++;
       }
       return entry.b;
     }
     if (CACHESTATS) {
-      cachestats.opMiss++;
+      cachestats.multiOpMiss++;
     }
 
     /* Compute the result in a way that generalizes or_rec. Identify the variable to branch on, and
@@ -1749,10 +1749,11 @@ public final class JFactory extends BDDFactory {
     }
 
     if (CACHESTATS && entry.a != -1) {
-      cachestats.opOverwrite++;
+      cachestats.multiOpOverwrite++;
     }
     entry.a = bddop_or;
     entry.b = res;
+    entry.c = hash;
     entry.operands = operands;
     return res;
   }
@@ -3948,12 +3949,30 @@ public final class JFactory extends BDDFactory {
     } else if (cache.table instanceof BigIntegerBddCacheData[]) {
       cache.table = new BigIntegerBddCacheData[newsize];
     } else if (cache.table instanceof MultiOpBddCacheData[]) {
+      MultiOpBddCacheData[] oldTable = (MultiOpBddCacheData[]) cache.table;
+
       cache.table = new MultiOpBddCacheData[newsize];
+
+      // copy over old entries
+      for (MultiOpBddCacheData cacheData : oldTable) {
+        if (cacheData == null) {
+          continue;
+        }
+        if (cacheData.a == bddop_or) {
+          int hash = cacheData.c;
+          cache.table[Math.abs(hash % newsize)] = cacheData;
+        }
+      }
     } else {
       throw new IllegalStateException("unknown cache table type");
     }
 
+    int copiedEntries = 0;
     for (int n = 0; n < newsize; n++) {
+      if (cache.table[n] != null) {
+        copiedEntries++;
+        continue;
+      }
       if (cache.table instanceof BddCacheDataI[]) {
         cache.table[n] = new BddCacheDataI();
       } else if (cache.table instanceof BigIntegerBddCacheData[]) {
@@ -3966,6 +3985,10 @@ public final class JFactory extends BDDFactory {
       cache.table[n].a = -1;
     }
     cache.tablesize = newsize;
+
+    if (copiedEntries > 0) {
+      System.out.println(String.format("Copied %s cache entries", copiedEntries));
+    }
 
     return 0;
   }

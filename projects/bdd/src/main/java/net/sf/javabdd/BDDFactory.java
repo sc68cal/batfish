@@ -715,6 +715,9 @@ public abstract class BDDFactory {
     public int opHit;
     public int opMiss;
     public int opOverwrite;
+    public int multiOpHit;
+    public int multiOpMiss;
+    public int multiOpOverwrite;
     public int swapCount;
 
     protected CacheStats() {}
@@ -728,6 +731,9 @@ public abstract class BDDFactory {
       opHit = that.opHit;
       opMiss = that.opMiss;
       opOverwrite = that.opOverwrite;
+      multiOpHit = that.multiOpHit;
+      multiOpMiss = that.multiOpMiss;
+      multiOpOverwrite = that.multiOpOverwrite;
       swapCount = that.swapCount;
     }
 
@@ -779,6 +785,22 @@ public abstract class BDDFactory {
         sb.append((float) 0);
       }
       sb.append(newLine);
+      sb.append("multiOperator Hits:  ");
+      sb.append(multiOpHit);
+      sb.append(newLine);
+      sb.append("multiOperator Miss:  ");
+      sb.append(multiOpMiss);
+      sb.append(newLine);
+      sb.append("multiOperator Overwrite:  ");
+      sb.append(multiOpOverwrite);
+      sb.append(newLine);
+      sb.append("=> Hit rate =   ");
+      if (multiOpHit + multiOpMiss > 0) {
+        sb.append(((float) multiOpHit) / ((float) multiOpHit + multiOpMiss));
+      } else {
+        sb.append((float) 0);
+      }
+      sb.append(newLine);
       sb.append("Swap count =    ");
       sb.append(swapCount);
       sb.append(newLine);
@@ -796,6 +818,10 @@ public abstract class BDDFactory {
    */
   public CacheStats getCacheStats() {
     return cachestats;
+  }
+
+  public void resetCacheStats() {
+    cachestats = new CacheStats();
   }
 
   // TODO: bdd_sizeprobe_hook
