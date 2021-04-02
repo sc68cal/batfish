@@ -8,6 +8,10 @@ AAA: 'aaa';
 
 ADDRESS: 'address';
 
+COLON
+:
+   ':'
+;
 CLASS_MAP: 'class-map';
 
 CONTROL_PLANE: 'control-plane';
@@ -19,3 +23,11 @@ IPADDRESS: 'ip address';
 NO: 'no';
 
 VLAN: 'vlan';
+
+NEWLINE
+:
+  '\r' '\n'?
+  | '\n'
+;
+
+

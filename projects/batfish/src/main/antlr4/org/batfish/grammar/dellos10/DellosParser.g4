@@ -9,3 +9,18 @@ s_vlan_dellos
 :
    NO? VLAN
 ;
+
+dellos10_configuration
+:
+   NEWLINE?
+   (
+      sl += stanza
+   )+ COLON? NEWLINE? EOF
+;
+
+
+stanza
+:
+   s_vlan_dellos
+
+;
