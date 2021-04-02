@@ -14,6 +14,8 @@ CONTROL_PLANE: 'control-plane';
 
 ETHERNET: 'ethernet';
 
+IPADDRESS: 'ip address';
+
 NO: 'no';
 
 VLAN: 'vlan';
